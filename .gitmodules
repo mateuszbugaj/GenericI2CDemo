@@ -4,3 +4,6 @@
 [submodule "lib/SimpleAvrUsart"]
 	path = lib/SimpleAvrUsart
 	url = git@github.com:mateuszbugaj/SimpleAvrUsart.git
+[submodule "lib/GenericI2C"]
+	path = lib/GenericI2C
+	url = git@github.com:mateuszbugaj/GenericI2C.git

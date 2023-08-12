@@ -4,6 +4,7 @@
 
 #include "hal.h"
 #include "usart.h"
+#include "i2c.h"
 
 /*
 +--------+
@@ -29,7 +30,14 @@ int main(void) {
   HALPin button = {&PORTB, 1, PULLUP_ENABLE};
   hal_pin_direction(button, INPUT);
 
-  usart_print("Start...\r\n\n");
+  I2C_setPrintFunc(&usart_print);
+  I2C_Config i2c_config = {
+    .addr = 123,
+    .respondToGeneralCall = true,
+    .loggingLevel = 4};  
+
+  usart_print("Start...\r\n");
+  I2C_init(&i2c_config);
   while (1) {
     if(hal_pin_read(button) == LOW){
       hal_pin_write(led, HIGH); 
