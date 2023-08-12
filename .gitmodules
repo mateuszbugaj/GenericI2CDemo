@@ -1,0 +1,6 @@
+[submodule "lib/HALibrary"]
+	path = lib/HALibrary
+	url = git@github.com:mateuszbugaj/HALibrary.git
+[submodule "lib/SimpleAvrUsart"]
+	path = lib/SimpleAvrUsart
+	url = git@github.com:mateuszbugaj/SimpleAvrUsart.git
