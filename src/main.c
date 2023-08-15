@@ -7,16 +7,19 @@
 #include "i2c.h"
 
 /*
-+--------+
-|  A168  |                  +--------+
-|        |                  | USBasp |
-|    PB0 +-> LED -> GND     |        |
-|    PD0 +------------------+ TX     |
-|    PD1 +------------------+ RX     |
-|    PB1 +-> BUTTON -> GND  +--------+
-|    PD7 +-> SCL
-|    PD6 +-> SDA
-+--------+
++--------+                              +--------+
+| A168   |                  +---------+ | A168   |
+| MASTER |                  |USB-UART | | SLAVE  |
+|    PB0 +-> LED -> GND     |Converter| |    PB0 +-> LED -> GND
+|    PD0 +------------------+ TX      | |        |
+|    PD1 +------------------+ RX      | |        |
+|    PB1 +-> BUTTON -> GND  +---------+ |        |
+|    PD7 +--SCL(OUT)          SLC(OUT)--+ PD7    |
+|    PD5 +--SCL(IN)            SCL(IN)--+ PD5    |
+|    PD6 +--SDA(OUT)          SDA(OUT)--+ PD6    |
+|    PB7 +--SDA(IN)            SDA(IN)--+ PB7    |
+|    PB2 +-> GND (ROLE)                 |        |
++--------+                              +--------+ 
 */
 
 /* 8-bit Timer/Counter0 */
@@ -46,8 +49,14 @@ enum State {
 };
 
 enum State state;
-HALPin SCLPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
-HALPin SDAPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
+HALPin sclOutPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
+HALPin sdaOutPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
+HALPin sclInPin = { .port = &PORTD, .pin = 5, .pullup = PULLUP_ENABLE };
+HALPin sdaInPin = { .port = &PORTB, .pin = 7, .pullup = PULLUP_ENABLE };
+I2C_Config i2c_config = {
+    .respondToGeneralCall = true,
+    .loggingLevel = 4};
+
 int main(void) {
   clock_prescale_set(clock_div_1);
   setupTimer();
@@ -65,18 +74,16 @@ int main(void) {
 
   I2C_setPrintFunc(&usart_print);
   I2C_setPrintNumFunc(&usart_print_num);
-  I2C_Config i2c_config = {
-    .respondToGeneralCall = true,
-    .loggingLevel = 4,
-    .SCLPin = SCLPin,
-    .SDAPin = SDAPin
-    };
 
-  if(hal_pin_read(rolePin) == HIGH){
+  i2c_config.sclOutPin = sclOutPin;
+  i2c_config.sdaOutPin = sdaOutPin;
+  i2c_config.sclInPin = sclInPin;
+  i2c_config.sdaInPin = sdaInPin;
+
+  if(hal_pin_read(rolePin) == LOW){
     i2c_config.role = MASTER;
     i2c_config.addr = 51;
   } else {
-    _delay_ms(500);
     i2c_config.role = SLAVE;
     i2c_config.addr = 52;
   }
@@ -86,24 +93,31 @@ int main(void) {
 
   setTimer(1000);
   state = SEND_START;
-  while (1) {}
+  while (1) {
+    if(i2c_config.role == SLAVE){
+      I2C_read();
+    }
+  }
 }
 
 ISR(TIMER0_COMPA_vect) {
   timerOverflowCount++;
   if (timerOverflowCount >= timerInterval){
-    if(state == SEND_START){
-      I2C_sendStartCondition();
-      state = SEND_STOP;
-      timerOverflowCount -= 500; // wait 500ms
-      return;
-    }
 
-    if(state == SEND_STOP){
-      I2C_sendStopCondition();
-      state = SEND_START;
-      timerOverflowCount -= 500; // wait 500ms
-      return;
+    if(i2c_config.role == MASTER){
+      if(state == SEND_START){
+        I2C_sendStartCondition();
+        state = SEND_STOP;
+        timerOverflowCount -= 500; // wait 500ms
+        return;
+      }
+
+      if(state == SEND_STOP){
+        I2C_sendStopCondition();
+        state = SEND_START;
+        timerOverflowCount -= 500; // wait 500ms
+        return;
+      }
     }
 
     timerOverflowCount = 0;
