@@ -97,28 +97,16 @@ int main(void) {
     if(i2c_config.role == SLAVE){
       I2C_read();
     }
+
+    if(i2c_config.role == MASTER){
+      I2C_write(52);
+    }
   }
 }
 
 ISR(TIMER0_COMPA_vect) {
   timerOverflowCount++;
   if (timerOverflowCount >= timerInterval){
-
-    if(i2c_config.role == MASTER){
-      if(state == SEND_START){
-        I2C_sendStartCondition();
-        state = SEND_STOP;
-        timerOverflowCount -= 500; // wait 500ms
-        return;
-      }
-
-      if(state == SEND_STOP){
-        I2C_sendStopCondition();
-        state = SEND_START;
-        timerOverflowCount -= 500; // wait 500ms
-        return;
-      }
-    }
 
     timerOverflowCount = 0;
   }
