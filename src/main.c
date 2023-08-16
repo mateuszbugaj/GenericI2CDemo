@@ -1,11 +1,3 @@
-#include <avr/io.h>
-#include <avr/power.h>
-#include <avr/delay.h>
-
-#include "hal.h"
-#include "usart.h"
-#include "i2c.h"
-
 /*
 +--------+                              +--------+
 | A168   |                  +---------+ | A168   |
@@ -21,6 +13,17 @@
 |    PB2 +-> GND (ROLE)                 |        |
 +--------+                              +--------+ 
 */
+
+#include <avr/io.h>
+#include <avr/power.h>
+#include <avr/delay.h>
+
+#include "hal.h"
+#include "usart.h"
+#include "i2c.h"
+
+#define MASTER_ADDR 51
+#define SLAVE_ADDR 52
 
 /* 8-bit Timer/Counter0 */
 float timerInterval = 100;
@@ -82,10 +85,10 @@ int main(void) {
 
   if(hal_pin_read(rolePin) == LOW){
     i2c_config.role = MASTER;
-    i2c_config.addr = 51;
+    i2c_config.addr = MASTER_ADDR;
   } else {
     i2c_config.role = SLAVE;
-    i2c_config.addr = 52;
+    i2c_config.addr = SLAVE_ADDR;
   }
 
   usart_print("Start...\r\n");
@@ -93,13 +96,14 @@ int main(void) {
 
   setTimer(1000);
   state = SEND_START;
+  uint8_t counter = 0;
   while (1) {
     if(i2c_config.role == SLAVE){
       I2C_read();
     }
 
     if(i2c_config.role == MASTER){
-      I2C_write(52);
+      I2C_write(counter++, SLAVE_ADDR);
     }
   }
 }
