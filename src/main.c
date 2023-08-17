@@ -16,7 +16,6 @@
 
 #include <avr/io.h>
 #include <avr/power.h>
-#include <avr/delay.h>
 
 #include "hal.h"
 #include "usart.h"
@@ -25,45 +24,19 @@
 #define MASTER_ADDR 51
 #define SLAVE_ADDR 52
 
-/* 8-bit Timer/Counter0 */
-float timerInterval = 100;
-volatile int timerOverflowCount = 0;
-void setupTimer() {
-    TCCR0A = (1 << WGM01);               // CTC Mode, OCRA - TOP
-    TCCR0B = (1 << CS02) | (1 << CS00);  // Prescaler to 1024
-    OCR0A = 8;                           // with prescaler 1024 and 8Mhz CPU it gives 1,024ms
-    TIMSK0 = (1 << OCIE0A);              // Output compare match A interrupt enable
-    TIFR0 = 0;                           // clear flags
+void write(uint8_t payload, uint8_t address);
 
-    sei();
-}
-
-/*
-To compensate for hardware timer discrepancies, the timerCount value is multiplied by a correction factor.
-With the current settings, the actual interval is 1.024ms instead of the desired 1ms.
-*/
-void setTimer(uint16_t ms){
-  timerInterval = ms * 0.98;
-}
-
-enum State {
-  SEND_START,
-  SEND_STOP
-};
-
-enum State state;
 HALPin sclOutPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
 HALPin sdaOutPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
 HALPin sclInPin = { .port = &PORTD, .pin = 5, .pullup = PULLUP_ENABLE };
 HALPin sdaInPin = { .port = &PORTB, .pin = 7, .pullup = PULLUP_ENABLE };
+
 I2C_Config i2c_config = {
     .respondToGeneralCall = true,
-    .loggingLevel = 4};
+    .loggingLevel = 3};
 
 int main(void) {
   clock_prescale_set(clock_div_1);
-  setupTimer();
-
   usart_init();
 
   HALPin led = {&PORTB, 0};
@@ -93,9 +66,6 @@ int main(void) {
 
   usart_print("Start...\r\n");
   I2C_init(&i2c_config);
-
-  setTimer(1000);
-  state = SEND_START;
   uint8_t counter = 0;
   while (1) {
     if(i2c_config.role == SLAVE){
@@ -103,15 +73,20 @@ int main(void) {
     }
 
     if(i2c_config.role == MASTER){
-      I2C_write(counter++, SLAVE_ADDR);
+      write(counter++, SLAVE_ADDR);
     }
   }
 }
 
-ISR(TIMER0_COMPA_vect) {
-  timerOverflowCount++;
-  if (timerOverflowCount >= timerInterval){
-
-    timerOverflowCount = 0;
+void write(uint8_t payload, uint8_t address){
+  bool result = I2C_write(address);
+  if(result == true){
+    I2C_sendRepeatedStartCondition();
+    I2C_write(payload);
+  } else {
+    I2C_logNum("Address not responding: ", address, 1);
   }
+
+  I2C_sendStopCondition();
+  wait();
 }
