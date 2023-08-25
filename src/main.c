@@ -73,20 +73,16 @@ int main(void) {
     }
 
     if(i2c_config.role == MASTER){
-      write(counter++, SLAVE_ADDR);
+      bool result = I2C_write(SLAVE_ADDR);
+      if(result){
+        while(1){
+          result = I2C_write(counter++);
+          if(result == false) return 0;
+        }
+      } else {
+        I2C_logNum("Address not responding: ", SLAVE_ADDR, 1);
+        return 0;
+      }
     }
   }
-}
-
-void write(uint8_t payload, uint8_t address){
-  bool result = I2C_write(address);
-  if(result == true){
-    I2C_sendRepeatedStartCondition();
-    I2C_write(payload);
-  } else {
-    I2C_logNum("Address not responding: ", address, 1);
-  }
-
-  I2C_sendStopCondition();
-  wait();
 }
