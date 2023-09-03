@@ -1,3 +1,5 @@
+#define TEST_MODE 1
+
 /*
 +--------+                              +--------+
 | A168   |                  +---------+ | A168   |
@@ -12,6 +14,37 @@
 |    PB7 +--SDA(IN)            SDA(IN)--+ PB7    |
 |    PB2 +-> GND (ROLE)                 |        |
 +--------+                              +--------+ 
+
++----------+
+| MPU-6000 |
+|      SCL +--SCL
+|      SDA +--SDA
++----------+
+
+TEST_MODE: 0
+Bi-directional communication of two microcontrollers. (Master - Slave)
+
+MASTER                                  SLAVE
+|                                           |
++-----------[Addres + WRITE]--------------->+
++-----------[Counter]---------------------->+
+|                                           |
++-----------[Addres + READ]---------------->+
++<----------[Counter + 1]-------------------+
+|                                           |
+
+TEST_MODE: 1
+Bi-directional communication with MPU-6000 gyroscope.
+
+MASTER                               MPU-6000
+|                                           |
++-----------[Address + WRITE]-------------->+
++-----------[WHO AM I Register]------------>+
+|                                           |
++-----------[Adress + READ]---------------->+
++<----------[WHO AM I Register value]-------+
+|                                           |
+
 */
 
 #include <avr/io.h>
@@ -20,11 +53,12 @@
 #include "hal.h"
 #include "usart.h"
 #include "i2c.h"
+#include "mpu6000.h"
 
 #define MASTER_ADDR 51
 #define SLAVE_ADDR 52
 
-void write(uint8_t payload, uint8_t address);
+void write(uint8_t address, uint8_t reqister, uint8_t value);
 
 HALPin sclOutPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
 HALPin sdaOutPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
@@ -33,7 +67,8 @@ HALPin sdaInPin = { .port = &PORTB, .pin = 7, .pullup = PULLUP_ENABLE };
 
 I2C_Config i2c_config = {
     .respondToGeneralCall = true,
-    .loggingLevel = 3};
+    .timeUnit = 200, // 20 -> 2 bytes per second
+    .loggingLevel = 4};
 
 int main(void) {
   clock_prescale_set(clock_div_1);
@@ -66,23 +101,45 @@ int main(void) {
 
   usart_print("Start...\r\n");
   I2C_init(&i2c_config);
-  uint8_t counter = 0;
+  uint8_t counter = 1;
   while (1) {
     if(i2c_config.role == SLAVE){
       I2C_read();
+      if(I2C_newByteReceived(true)){
+        uint8_t payload = I2C_lastByte();
+        I2C_logNum("> Got new byte: ", payload, 1);
+        I2C_write(++payload);
+      }
     }
 
     if(i2c_config.role == MASTER){
-      bool result = I2C_write(SLAVE_ADDR);
-      if(result){
-        while(1){
-          result = I2C_write(counter++);
-          if(result == false) return 0;
-        }
+#if TEST_MODE == 0
+      I2C_sendStartCondition();
+      if(I2C_writeAddress(SLAVE_ADDR, WRITE)){
+        I2C_write(counter);
+        I2C_sendRepeatedStartCondition();
+        I2C_writeAddress(SLAVE_ADDR, READ);
+        uint8_t response = I2C_receive(true);
+        I2C_logNum("> Got response: ", response, 1);
+        counter = response;
       } else {
-        I2C_logNum("Address not responding: ", SLAVE_ADDR, 1);
+        I2C_logNum("> Address not responding: ", SLAVE_ADDR, 1);
         return 0;
       }
+      I2C_sendStopCondition();
+#elif TEST_MODE == 1
+      I2C_sendStartCondition();
+      I2C_writeAddress(MPU6000_ADDR, WRITE);
+      I2C_write(MPU6000_WHO_AM_I_REG);
+      I2C_sendRepeatedStartCondition();
+      I2C_writeAddress(MPU6000_ADDR, READ);
+      uint8_t result = I2C_receive(false);
+      I2C_sendStopCondition();
+
+      I2C_logNum("Who am I", result, 1);
+      I2C_logNum("Should be: ", MPU6000_ADDR, 1);
+      return 0;
+#endif
     }
   }
 }
