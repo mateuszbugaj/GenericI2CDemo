@@ -1,4 +1,4 @@
-#define TEST_MODE 1
+#define TEST_MODE 2
 
 /*
 +--------+                              +--------+
@@ -20,6 +20,12 @@
 |      SCL +--SCL
 |      SDA +--SDA
 +----------+
+
++--------+
+| AS5600 |
+|    SCL +--SCL
+|    SDA +--SDA
++--------+
 
 TEST_MODE: 0
 Bi-directional communication of two microcontrollers. (Master - Slave)
@@ -45,6 +51,25 @@ MASTER                               MPU-6000
 +<----------[WHO AM I Register value]-------+
 |                                           |
 
+TEST_MODE: 2
+Bi-directional continous reading of 12-bit angle from AS5600 encoder.
+
+MASTER                                 AS5600
+|                                           |
++-----------[Address + WRITE]-------------->+
++-----------[ANGLE L Register]------------->+
+|                                           |
++-----------[Address + READ]--------------->+
++<----------[Angle L Register value]--------+
+|                                           |
+|                                           |
++-----------[Address + WRITE]-------------->+
++-----------[ANGLE H Register]------------->+
+|                                           |
++-----------[Address + READ]--------------->+
++<----------[Angle H Register value]--------+
+|                                           |
+
 */
 
 #include <avr/io.h>
@@ -54,11 +79,12 @@ MASTER                               MPU-6000
 #include "usart.h"
 #include "i2c.h"
 #include "mpu6000.h"
+#include "as5600.h"
 
 #define MASTER_ADDR 51
 #define SLAVE_ADDR 52
 
-void write(uint8_t address, uint8_t reqister, uint8_t value);
+uint8_t readRegister(uint8_t reqisterAddress);
 
 HALPin sclOutPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
 HALPin sdaOutPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
@@ -67,8 +93,8 @@ HALPin sdaInPin = { .port = &PORTB, .pin = 7, .pullup = PULLUP_ENABLE };
 
 I2C_Config i2c_config = {
     .respondToGeneralCall = true,
-    .timeUnit = 200, // 20 -> 2 bytes per second
-    .loggingLevel = 4};
+    .timeUnit = 20, // 20 -> 2 bytes per second
+    .loggingLevel = 1};
 
 int main(void) {
   clock_prescale_set(clock_div_1);
@@ -101,7 +127,8 @@ int main(void) {
 
   usart_print("Start...\r\n");
   I2C_init(&i2c_config);
-  uint8_t counter = 1;
+  uint8_t counter = 0;
+  uint8_t angle_H, angle_L;
   while (1) {
     if(i2c_config.role == SLAVE){
       I2C_read();
@@ -139,7 +166,33 @@ int main(void) {
       I2C_logNum("Who am I", result, 1);
       I2C_logNum("Should be: ", MPU6000_ADDR, 1);
       return 0;
+#elif TEST_MODE == 2
+      angle_H = readRegister(AS5600_ANGLE_H);
+      angle_L = readRegister(AS5600_ANGLE_L);
+      uint16_t combined = (angle_H << 8) | angle_L;
+      float translated = 360 * (combined / 4096.0);
+      usart_print_float(translated, 2);
+      usart_print("\n\r");
+
 #endif
     }
   }
+}
+
+uint8_t readRegister(uint8_t reqisterAddress){
+  uint8_t value;
+
+  I2C_sendStartCondition();
+  if(I2C_writeAddress(AS5600_ADDR, WRITE)){
+    I2C_write(reqisterAddress);
+    I2C_sendRepeatedStartCondition();
+    I2C_writeAddress(AS5600_ADDR, READ);
+    value = I2C_receive(false);
+  } else {
+    I2C_logNum("> Address not responding: ", AS5600_ADDR, 1);
+    return 0;
+  }
+  I2C_sendStopCondition();
+
+  return value;
 }
