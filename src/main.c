@@ -1,4 +1,4 @@
-#define TEST_MODE 2
+#define TEST_MODE 0
 
 /*
 +--------+                              +--------+
@@ -13,7 +13,15 @@
 |    PD6 +--SDA(OUT)          SDA(OUT)--+ PD6    |
 |    PB7 +--SDA(IN)            SDA(IN)--+ PB7    |
 |    PB2 +-> GND (ROLE)                 |        |
-+--------+                              +--------+ 
+|    PC5 +------+                       +--------+
+|    PC4 +----+ |
++--------+    | |
+|             | |
++---------+   | |
+| Encoder |   | |
+|     CLK +---+ |
+|      DT +-----+
++---------+
 
 +----------+
 | MPU-6000 |
@@ -90,10 +98,14 @@ HALPin sclOutPin = { .port = &PORTD, .pin = 7, .pullup = PULLUP_DISABLE };
 HALPin sdaOutPin = { .port = &PORTD, .pin = 6, .pullup = PULLUP_DISABLE };
 HALPin sclInPin = { .port = &PORTD, .pin = 5, .pullup = PULLUP_ENABLE };
 HALPin sdaInPin = { .port = &PORTB, .pin = 7, .pullup = PULLUP_ENABLE };
-
+HALPin encoderCLK = { .port = &PORTC, .pin = 4, .pullup = PULLUP_ENABLE }; // PCINT12
+HALPin encoderDT = { .port = &PORTC, .pin = 5, .pullup = PULLUP_ENABLE };
+uint8_t encoderVal = 200;
+PinLevel encoderState;
+PinLevel encoderLastState;
 I2C_Config i2c_config = {
     .respondToGeneralCall = true,
-    .timeUnit = 20, // 20 -> 2 bytes per second
+    .timeUnit = 200, // 20 -> 2 bytes per second
     .loggingLevel = 1};
 
 int main(void) {
@@ -124,6 +136,12 @@ int main(void) {
     i2c_config.role = SLAVE;
     i2c_config.addr = SLAVE_ADDR;
   }
+
+  hal_pin_direction(encoderCLK, INPUT);
+  hal_pin_direction(encoderDT, INPUT);
+  encoderLastState = hal_pin_read(encoderCLK);
+  PCICR |= (1 << PCIE1); // enable pin change interrupt for PCINT[8:14] pins
+  PCMSK1 |= (1 << PCINT12);
 
   usart_print("Start...\r\n");
   I2C_init(&i2c_config);
@@ -173,7 +191,6 @@ int main(void) {
       float translated = 360 * (combined / 4096.0);
       usart_print_float(translated, 2);
       usart_print("\n\r");
-
 #endif
     }
   }
@@ -195,4 +212,22 @@ uint8_t readRegister(uint8_t reqisterAddress){
   I2C_sendStopCondition();
 
   return value;
+}
+
+ISR(PCINT1_vect){
+  encoderState = hal_pin_read(encoderCLK);
+  if(encoderState != encoderLastState){
+    if(hal_pin_read(encoderDT) != encoderState){
+      encoderVal += 5;
+    } else {
+      encoderVal -= 5;
+    }
+
+    if(encoderVal < 20) encoderVal = 20;
+    if(encoderVal > 200) encoderVal = 200;
+
+    i2c_config.timeUnit = encoderVal;
+  }
+
+  encoderLastState = encoderState;
 }
