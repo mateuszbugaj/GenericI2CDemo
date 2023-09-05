@@ -1,40 +1,13 @@
-#define TEST_MODE 0
+#include <avr/io.h>
+#include <avr/power.h>
+
+#include "hal.h"
+#include "usart.h"
+#include "i2c.h"
+#include "mpu6000.h"
+#include "as5600.h"
 
 /*
-+--------+                              +--------+
-| A168   |                  +---------+ | A168   |
-| MASTER |                  |USB-UART | | SLAVE  |
-|    PB0 +-> LED -> GND     |Converter| |    PB0 +-> LED -> GND
-|    PD0 +------------------+ TX      | |        |
-|    PD1 +------------------+ RX      | |        |
-|    PB1 +-> BUTTON -> GND  +---------+ |        |
-|    PD7 +--SCL(OUT)          SLC(OUT)--+ PD7    |
-|    PD5 +--SCL(IN)            SCL(IN)--+ PD5    |
-|    PD6 +--SDA(OUT)          SDA(OUT)--+ PD6    |
-|    PB7 +--SDA(IN)            SDA(IN)--+ PB7    |
-|    PB2 +-> GND (ROLE)                 |        |
-|    PC5 +------+                       +--------+
-|    PC4 +----+ |
-+--------+    | |
-|             | |
-+---------+   | |
-| Encoder |   | |
-|     CLK +---+ |
-|      DT +-----+
-+---------+
-
-+----------+
-| MPU-6000 |
-|      SCL +--SCL
-|      SDA +--SDA
-+----------+
-
-+--------+
-| AS5600 |
-|    SCL +--SCL
-|    SDA +--SDA
-+--------+
-
 TEST_MODE: 0
 Bi-directional communication of two microcontrollers. (Master - Slave)
 
@@ -79,15 +52,7 @@ MASTER                                 AS5600
 |                                           |
 
 */
-
-#include <avr/io.h>
-#include <avr/power.h>
-
-#include "hal.h"
-#include "usart.h"
-#include "i2c.h"
-#include "mpu6000.h"
-#include "as5600.h"
+#define TEST_MODE 0
 
 #define MASTER_ADDR 51
 #define SLAVE_ADDR 52
@@ -105,8 +70,8 @@ PinLevel encoderState;
 PinLevel encoderLastState;
 I2C_Config i2c_config = {
     .respondToGeneralCall = true,
-    .timeUnit = 200, // 20 -> 2 bytes per second
-    .loggingLevel = 1};
+    .timeUnit = 100, // 20 -> 2 bytes per second
+    .loggingLevel = 3};
 
 int main(void) {
   clock_prescale_set(clock_div_1);
@@ -132,6 +97,7 @@ int main(void) {
   if(hal_pin_read(rolePin) == LOW){
     i2c_config.role = MASTER;
     i2c_config.addr = MASTER_ADDR;
+    _delay_ms(500);
   } else {
     i2c_config.role = SLAVE;
     i2c_config.addr = SLAVE_ADDR;
