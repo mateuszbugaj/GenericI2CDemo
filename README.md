@@ -1,7 +1,7 @@
 # GenericI2CDemo
 
-Demo application testing usage of the GenericI2C library with devices like:
-- Another AVR microcontroler
+Demo application demonstrating the usage of the [GenericI2C](https://github.com/mateuszbugaj/GenericI2C) library with devices like:
+- Another AVR microcontroller
 - MPU6000 motion sensor
 - AS5600 magnetic encoder
 
